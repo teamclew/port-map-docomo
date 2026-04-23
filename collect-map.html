@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>回収車体一覧マップ</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #f5f3f0;
+    --surface: #ffffff;
+    --surface2: #f0ece8;
+    --accent: #d35400;
+    --accent-light: #e67e22;
+    --accent-glow: rgba(211,84,0,.2);
+    --accent-soft: rgba(211,84,0,.06);
+    --text: #2a2228;
+    --text-dim: #7a6e78;
+    --border: #e2ddd8;
+    --shadow: 0 4px 20px rgba(0,0,0,.08);
+  }
+
+  body {
+    font-family: 'Noto Sans JP', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    z-index: 1000;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .logo-icon {
+    width: 36px; height: 36px;
+    border-radius: 9px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px var(--accent-glow);
+    flex-shrink: 0;
+  }
+
+  .logo-icon img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+  }
+
+  .logo h1 {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: .02em;
+    line-height: 1.3;
+  }
+
+  .logo h1 span { color: var(--accent); }
+
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #27ae60;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .35; }
+  }
+
+  .badge {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 9px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  #map { flex: 1; z-index: 1; }
+
+  .custom-marker {
+    background: var(--accent);
+    border: 3px solid #fff;
+    border-radius: 50%;
+    width: 15px !important;
+    height: 15px !important;
+    box-shadow: 0 2px 10px var(--accent-glow);
+    transition: transform .2s, box-shadow .2s;
+  }
+
+  .custom-marker:hover {
+    transform: scale(1.6);
+    box-shadow: 0 4px 20px var(--accent-glow);
+  }
+
+  .my-location-marker {
+    width: 18px !important;
+    height: 18px !important;
+    background: #4a90ff;
+    border: 3px solid #fff;
+    border-radius: 50%;
+    box-shadow: 0 0 0 8px rgba(74,144,255,.15), 0 2px 6px rgba(74,144,255,.4);
+    animation: locPulse 2.5s infinite;
+  }
+
+  @keyframes locPulse {
+    0%, 100% { box-shadow: 0 0 0 8px rgba(74,144,255,.15), 0 2px 6px rgba(74,144,255,.4); }
+    50% { box-shadow: 0 0 0 16px rgba(74,144,255,.05), 0 2px 6px rgba(74,144,255,.4); }
+  }
+
+  .leaflet-popup-content-wrapper {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 8px 30px rgba(0,0,0,.12) !important;
+    color: var(--text) !important;
+    padding: 0 !important;
+  }
+
+  .leaflet-popup-tip { background: var(--surface) !important; }
+
+  .leaflet-popup-content {
+    margin: 0 !important;
+    min-width: 250px !important;
+  }
+
+  .popup-inner { padding: 14px 16px; }
+
+  .popup-inner .port-name {
+    font-weight: 700;
+    font-size: 14px;
+    margin-bottom: 8px;
+    line-height: 1.4;
+    color: var(--text);
+  }
+
+  .popup-inner .meta {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+    margin-bottom: 12px;
+  }
+
+  .popup-inner .meta span {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .popup-inner .meta span::before {
+    content: '';
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+  }
+
+  .gmaps-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    padding: 10px 12px;
+    background: #fff;
+    color: #1a73e8;
+    border: 2px solid #1a73e8;
+    border-radius: 8px;
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background .2s, transform .1s;
+  }
+
+  .gmaps-btn:hover { background: #e8f0fe; }
+  .gmaps-btn:active { transform: scale(.97); }
+  .gmaps-btn svg { width: 16px; height: 16px; flex-shrink: 0; fill: #1a73e8; }
+
+  .info-panel {
+    position: absolute;
+    top: 72px;
+    right: 12px;
+    z-index: 999;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    width: 280px;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+    box-shadow: var(--shadow);
+  }
+
+  .info-panel h2 {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    margin-bottom: 10px;
+  }
+
+  .port-list { display: flex; flex-direction: column; gap: 5px; }
+
+  .port-item {
+    background: var(--surface2);
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: 9px 11px;
+    cursor: pointer;
+    transition: border-color .2s, background .2s;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .port-item:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .port-item .port-id {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--accent);
+    font-size: 10px;
+    display: block;
+    margin-bottom: 2px;
+    font-weight: 500;
+  }
+
+  .locate-btn {
+    position: absolute;
+    bottom: 28px;
+    left: 14px;
+    z-index: 999;
+    width: 44px; height: 44px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    display: grid; place-items: center;
+    cursor: pointer;
+    box-shadow: var(--shadow);
+    transition: background .2s, border-color .2s;
+    color: var(--text-dim);
+  }
+
+  .locate-btn:hover {
+    background: var(--surface2);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .locate-btn.active { border-color: #4a90ff; color: #4a90ff; }
+  .locate-btn svg { width: 20px; height: 20px; }
+
+  .setup-banner {
+    position: absolute;
+    bottom: 24px; left: 50%;
+    transform: translateX(-50%);
+    z-index: 999;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 24px;
+    box-shadow: var(--shadow);
+    max-width: 560px;
+    width: calc(100% - 48px);
+    display: none;
+  }
+
+  .setup-banner.show { display: block; }
+  .setup-banner h3 { font-size: 14px; margin-bottom: 8px; color: var(--accent); }
+  .setup-banner p { font-size: 13px; color: var(--text-dim); line-height: 1.6; }
+
+  .setup-banner code {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+  }
+
+  .setup-banner .close-btn {
+    position: absolute;
+    top: 10px; right: 12px;
+    background: none; border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 18px;
+  }
+
+  .info-panel::-webkit-scrollbar { width: 4px; }
+  .info-panel::-webkit-scrollbar-track { background: transparent; }
+  .info-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  @media (max-width: 640px) {
+    .info-panel { display: none; }
+    header { padding: 10px 14px; }
+    .logo h1 { font-size: 14px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon"><img src="data:image/jpeg;base64,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" alt="docomo bike"></div>
+    <h1><span>回収車体</span><br>一覧マップ</h1>
+  </div>
+  <div class="status-bar">
+    <div class="status-dot"></div>
+    <span id="updateTime">読み込み中...</span>
+    <span class="badge" id="portCount">--</span>
+    <span>台</span>
+  </div>
+</header>
+
+<div id="map"></div>
+
+<div class="info-panel" id="infoPanel">
+  <h2>回収車体一覧</h2>
+  <div class="port-list" id="portList"></div>
+</div>
+
+<button class="locate-btn" id="locateBtn" title="現在地を表示">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="4"/>
+    <line x1="12" y1="2" x2="12" y2="6"/>
+    <line x1="12" y1="18" x2="12" y2="22"/>
+    <line x1="2" y1="12" x2="6" y2="12"/>
+    <line x1="18" y1="12" x2="22" y2="12"/>
+  </svg>
+</button>
+
+<div class="setup-banner" id="setupBanner">
+  <button class="close-btn" onclick="document.getElementById('setupBanner').classList.remove('show')">&times;</button>
+  <h3>⚙️ セットアップ</h3>
+  <p>CSV取得に失敗しました。スプレッドシートの<code>ウェブに公開</code>設定を確認してください。</p>
+</div>
+
+<script>
+const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRkXkmnQcl1umz_oijN4hnraNnVKiTT2XN67olPxavbT0HRM9BjJFj_tC5Dd6G1fQHP5y4jxDGtO6Kr/pub?gid=465147480&single=true&output=csv';
+const REFRESH_INTERVAL = 30 * 60 * 1000;
+
+const SAMPLE_DATA = [
+  { port: "KT022-京都中央信用金庫 西院支店", csa: "CLW0964", lat: 35.003718, lng: 135.729509 },
+  { port: "KT032-京阪出町柳駅前(7番出口)", csa: "CLW1258", lat: 35.030386, lng: 135.773047 },
+  { port: "KT042-デザインホテル京都麩屋町", csa: "CLW1508", lat: 35.001645, lng: 135.765428 },
+  { port: "KT056-鴨屋旅館", csa: "CLW1507", lat: 34.986387, lng: 135.77115 },
+  { port: "KT070-京都ユウベルホテル", csa: "CLW0245", lat: 34.973752, lng: 135.761432 },
+  { port: "KT117-陣の花", csa: "CLW0437", lat: 35.002971, lng: 135.770747 },
+  { port: "KT199-桃山御陵前(Choei パーくん桃山駐輪場)", csa: "CLW1517", lat: 34.932852, lng: 135.766828 },
+  { port: "KT272-ホテル晴輝 京都ステーション 裏側", csa: "CLW0909", lat: 34.981326, lng: 135.76001 },
+  { port: "KT279-京都中央信用金庫 府庁前支店", csa: "CLW1355", lat: 35.017671, lng: 135.755144 },
+  { port: "KT294-竹田醍醐田町第3(くるっとパーク)", csa: "CLW1510", lat: 34.950582, lng: 135.757461 },
+  { port: "KT400-グランジット 京都河原町", csa: "CLW1132", lat: 35.004644, lng: 135.769681 },
+  { port: "KT410-MODISH GION SHIRAKAWA", csa: "CLW1064", lat: 35.0069, lng: 135.7757 },
+  { port: "KT434-洛和会 東寺南病院", csa: "CLW1523", lat: 34.976355, lng: 135.747569 },
+  { port: "KT473-はるかぜガーデン桂川", csa: "CLW1525", lat: 34.995173, lng: 135.701269 },
+  { port: "KT477-嵯峨野開町(太秦帷子ノ辻パーキング)", csa: "CLW1513", lat: 35.014458, lng: 135.698614 },
+  { port: "KT480-豊国神社", csa: "CLW1522", lat: 34.9918, lng: 135.771652 },
+  { port: "KT498-ウエストハイツ", csa: "CLW1504", lat: 35.001596, lng: 135.731542 },
+  { port: "KT520-River Regend2", csa: "CLW1360", lat: 34.991347, lng: 135.720384 },
+  { port: "KT540-平野ビル・AYA四条烏丸ビル", csa: "CLW0655", lat: 35.002451, lng: 135.759205 },
+];
+
+// ── Map (Light theme) ──
+const map = L.map('map', { zoomControl: false }).setView([34.985, 135.755], 13);
+L.control.zoom({ position: 'topleft' }).addTo(map);
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+  subdomains: 'abcd',
+  maxZoom: 19
+}).addTo(map);
+
+let markers = L.layerGroup().addTo(map);
+
+// ── 現在地 ──
+let myLocationMarker = null;
+let myLocationCircle = null;
+let watchId = null;
+let myLat = null, myLng = null;
+
+function updateMyLocation(lat, lng, accuracy) {
+  myLat = lat; myLng = lng;
+  if (myLocationMarker) {
+    myLocationMarker.setLatLng([lat, lng]);
+    myLocationCircle.setLatLng([lat, lng]).setRadius(accuracy);
+  } else {
+    const icon = L.divIcon({ className: 'my-location-marker', iconSize: [18, 18], iconAnchor: [9, 9] });
+    myLocationMarker = L.marker([lat, lng], { icon, zIndexOffset: 1000 })
+      .bindPopup('<div class="popup-inner"><div class="port-name">📍 現在地</div></div>')
+      .addTo(map);
+    myLocationCircle = L.circle([lat, lng], {
+      radius: accuracy, color: '#4a90ff', fillColor: '#4a90ff',
+      fillOpacity: 0.08, weight: 1, opacity: 0.3
+    }).addTo(map);
+  }
+}
+
+function startGeolocation() {
+  if (!navigator.geolocation) { alert('位置情報を取得できません'); return; }
+  document.getElementById('locateBtn').classList.add('active');
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      updateMyLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+      map.setView([pos.coords.latitude, pos.coords.longitude], 15);
+    },
+    () => { alert('位置情報の取得に失敗しました。'); document.getElementById('locateBtn').classList.remove('active'); },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+  if (watchId === null) {
+    watchId = navigator.geolocation.watchPosition(
+      (pos) => updateMyLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy),
+      () => {}, { enableHighAccuracy: true }
+    );
+  }
+}
+
+document.getElementById('locateBtn').addEventListener('click', () => {
+  myLocationMarker ? map.setView([myLat, myLng], 15) : startGeolocation();
+});
+
+function getGoogleMapsURL(lat, lng) {
+  return myLat !== null
+    ? `https://www.google.com/maps/dir/?api=1&origin=${myLat},${myLng}&destination=${lat},${lng}&travelmode=bicycling`
+    : `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=bicycling`;
+}
+
+// ── CSV パーサー ──
+function parseCSVLine(line) {
+  const fields = []; let current = ''; let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') { if (i + 1 < line.length && line[i+1] === '"') { current += '"'; i++; } else { inQuotes = false; } }
+      else { current += ch; }
+    } else {
+      if (ch === '"') { inQuotes = true; }
+      else if (ch === ',') { fields.push(current.trim()); current = ''; }
+      else { current += ch; }
+    }
+  }
+  fields.push(current.trim());
+  return fields;
+}
+
+function parseCSV(csv) {
+  const lines = csv.trim().split(/\r?\n/);
+  if (lines.length < 2) return [];
+  const results = [];
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const cols = parseCSVLine(line);
+    let port = cols[0] || '', csa = cols[1] || '', lat, lng;
+    if (cols.length === 3) {
+      const ll = cols[2].split(','); lat = parseFloat(ll[0]); lng = parseFloat(ll[1]);
+    } else if (cols.length >= 4) {
+      lat = parseFloat(cols[2]); lng = parseFloat(cols[3]);
+    }
+    if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) results.push({ port, csa, lat, lng });
+  }
+  return results;
+}
+
+// ── マーカー描画 ──
+function renderMarkers(data) {
+  markers.clearLayers();
+  const listEl = document.getElementById('portList');
+  listEl.innerHTML = '';
+
+  data.forEach((d) => {
+    const icon = L.divIcon({
+      className: 'custom-marker',
+      iconSize: [15, 15],
+      iconAnchor: [7, 7]
+    });
+
+    const gmapsURL = getGoogleMapsURL(d.lat, d.lng);
+    const marker = L.marker([d.lat, d.lng], { icon })
+      .bindPopup(`
+        <div class="popup-inner">
+          <div class="port-name">${d.port}</div>
+          <div class="meta">
+            <span>CSA: ${d.csa}</span>
+            <span>${d.lat.toFixed(6)}, ${d.lng.toFixed(6)}</span>
+          </div>
+          <a class="gmaps-btn" href="${gmapsURL}" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z"/></svg>
+            Google Maps で経路を開く
+          </a>
+        </div>
+      `);
+    markers.addLayer(marker);
+
+    const item = document.createElement('div');
+    item.className = 'port-item';
+    item.innerHTML = `<span class="port-id">${d.csa}</span>${d.port}`;
+    item.addEventListener('click', () => { map.setView([d.lat, d.lng], 16); marker.openPopup(); });
+    listEl.appendChild(item);
+  });
+
+  document.getElementById('portCount').textContent = data.length;
+  if (data.length > 0) {
+    map.fitBounds(L.latLngBounds(data.map(d => [d.lat, d.lng])), { padding: [60, 60] });
+  }
+}
+
+// ── データ取得 ──
+async function fetchData() {
+  const timeEl = document.getElementById('updateTime');
+  if (!SHEET_CSV_URL) {
+    renderMarkers(SAMPLE_DATA);
+    timeEl.textContent = `デモモード • ${new Date().toLocaleTimeString('ja-JP')}`;
+    return;
+  }
+  document.getElementById('setupBanner').classList.remove('show');
+  try {
+    const sep = SHEET_CSV_URL.includes('?') ? '&' : '?';
+    const res = await fetch(SHEET_CSV_URL + sep + 't=' + Date.now());
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const csv = await res.text();
+    const data = parseCSV(csv);
+    if (data.length === 0) {
+      renderMarkers(SAMPLE_DATA);
+      timeEl.textContent = '⚠ CSV取得失敗';
+      document.getElementById('setupBanner').classList.add('show');
+      return;
+    }
+    renderMarkers(data);
+    timeEl.textContent = `更新: ${new Date().toLocaleTimeString('ja-JP')} (${data.length}件)`;
+  } catch (e) {
+    console.error('データ取得エラー:', e);
+    renderMarkers(SAMPLE_DATA);
+    timeEl.textContent = '⚠ 取得エラー';
+    document.getElementById('setupBanner').classList.add('show');
+  }
+}
+
+fetchData();
+setInterval(fetchData, REFRESH_INTERVAL);
+startGeolocation();
+</script>
+
+</body>
+</html>
